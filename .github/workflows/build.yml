@@ -1,0 +1,30 @@
+name: Собрать exe
+
+on:
+  workflow_dispatch:      # кнопка "Run workflow" на вкладке Actions
+  push:
+    branches: [ main ]    # и автоматически при каждом изменении файлов
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Забрать код
+        uses: actions/checkout@v4
+
+      - name: Поставить Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Поставить зависимости
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Собрать exe
+        run: pyinstaller --onefile --noconsole --name Tablicio --add-data "index.html;." app.py
+
+      - name: Выложить готовый exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tablicio-exe
+          path: dist/Tablicio.exe
