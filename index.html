@@ -85,6 +85,13 @@
   th,td{padding:0;vertical-align:top}
   thead th{height:1px} /* все шапки тянутся до самой высокой */
   tbody td{height:1px} /* заставляет ячейки строки тянуться на всю её высоту */
+  /* Firefox трактует проценты в таблицах иначе — там выравниваем через JS */
+  @supports (-moz-appearance:none){
+    thead th{height:auto}
+    tbody td{height:auto}
+    .cell{height:auto}
+    .col-head{height:auto}
+  }
   th.corner{width:34px}
 
   .col-head{
@@ -433,6 +440,27 @@
 
   const $=s=>document.querySelector(s);
   const thead=$("#grid thead"), tbody=$("#grid tbody");
+  // Firefox: CSS-трюк выравнивания высот не работает — делаем то же самое в JS
+  const FFX=(typeof CSS!=="undefined")&&CSS.supports&&CSS.supports("-moz-appearance","none");
+  function equalizeHead(){
+    if(!FFX)return;
+    const heads=[...thead.querySelectorAll(".col-head")];
+    if(!heads.length)return;
+    heads.forEach(h=>h.style.height="");
+    const m=Math.max(...heads.map(h=>h.offsetHeight));
+    heads.forEach(h=>h.style.height=m+"px");
+  }
+  function equalizeRows(){
+    if(!FFX)return;
+    [...tbody.rows].forEach(tr=>{
+      const cells=[...tr.querySelectorAll(".cell")];
+      if(!cells.length)return;
+      cells.forEach(c=>c.style.height="");
+      const rowH=parseInt(tr.children[0].style.height||"0",10)||0;
+      const m=Math.max(rowH,...cells.map(c=>c.offsetHeight));
+      cells.forEach(c=>c.style.height=m+"px");
+    });
+  }
 
   let db=null, usingIDB=false;
   const mem={val:null};
@@ -478,6 +506,7 @@
       refreshStats();
       snapshot();
       scheduleServerSave();
+      equalizeRows();
     },500);
   }
 
@@ -703,6 +732,7 @@
     });
     thead.appendChild(tr);
     refreshFilterOptions();
+    equalizeHead();
   }
 
   // filters[colId] = undefined (все) | Set выбранных значений ("\u0000empty" = пустые)
@@ -828,6 +858,7 @@
         const move=ev=>{
           row.height=Math.max(48,Math.round(startH+ev.clientY-startY));
           [...tr.children].forEach(td=>td.style.height=row.height+"px");
+          if(FFX)[...tr.querySelectorAll(".cell")].forEach(c=>c.style.height=row.height+"px");
         };
         const up=()=>{
           grip.classList.remove("dragging");
@@ -882,6 +913,7 @@
       shown===state.rows.length ? "Строк: "+state.rows.length
       : "Показано "+shown+" из "+state.rows.length;
     refreshStats();
+    equalizeRows();
   }
 
   function buildCell(row,col){
@@ -936,6 +968,7 @@
       b.html=sanitizeHtml(txt.innerHTML);
       b.value=txt.textContent; // чистый текст — для фильтров
       markDirty();
+      if(FFX)requestAnimationFrame(equalizeRows);
     };
     txt.addEventListener("input",sync);
     txt.addEventListener("focus",()=>{
