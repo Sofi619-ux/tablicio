@@ -1,1 +1,4 @@
-flask
+# Версии закреплены под Python 3.8 (Windows 7).
+# Flask 3.1+ и Werkzeug 3.1+ требуют Python 3.9 — их не ставить.
+flask==3.0.3
+werkzeug==3.0.6
