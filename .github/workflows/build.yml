@@ -7,21 +7,60 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # Не windows-latest: на свежих раннерах Python 3.8 уже недоступен
+    runs-on: windows-2022
     steps:
       - name: Забрать код
         uses: actions/checkout@v4
 
-      - name: Поставить Python
+      - name: Поставить Python 3.8 (последний с поддержкой Windows 7)
         uses: actions/setup-python@v5
         with:
-          python-version: "3.9"
+          python-version: "3.8"
 
       - name: Поставить зависимости
-        run: pip install -r requirements.txt pyinstaller
+        run: pip install -r requirements.txt pyinstaller==6.21.0
+
+      # Windows 7 не имеет Universal C Runtime (api-ms-win-crt-*.dll),
+      # который нужен Python 3.8. Берём эти DLL из Windows SDK на раннере
+      # и вошьём их прямо в exe — тогда на компьютере заказчика
+      # ничего доустанавливать не придётся.
+      - name: Найти UCRT DLL в Windows SDK
+        shell: pwsh
+        run: |
+          $roots = @(
+            "C:\Program Files (x86)\Windows Kits\10\Redist"
+          )
+          $found = $null
+          foreach ($root in $roots) {
+            if (-not (Test-Path $root)) { continue }
+            # Сначала версионированные папки (10.0.xxxxx.0), самая свежая
+            $versioned = Get-ChildItem $root -Directory -Filter "10.*" -ErrorAction SilentlyContinue |
+              Sort-Object Name -Descending
+            foreach ($v in $versioned) {
+              $cand = Join-Path $v.FullName "ucrt\DLLs\x64"
+              if (Test-Path (Join-Path $cand "ucrtbase.dll")) { $found = $cand; break }
+            }
+            if ($found) { break }
+            # Затем неверсионированный путь
+            $cand = Join-Path $root "ucrt\DLLs\x64"
+            if (Test-Path (Join-Path $cand "ucrtbase.dll")) { $found = $cand }
+          }
+          if (-not $found) {
+            Write-Error "UCRT DLLs не найдены в Windows SDK на раннере"
+            exit 1
+          }
+          Write-Host "UCRT найден: $found"
+          Write-Host ("Файлов: " + (Get-ChildItem "$found\*.dll").Count)
+          echo "UCRT_DIR=$found" >> $env:GITHUB_ENV
 
       - name: Собрать exe
-        run: pyinstaller --onefile --noconsole --name Tablicio --add-data "index.html;." app.py
+        shell: pwsh
+        run: >
+          pyinstaller --onefile --noconsole --name Tablicio
+          --add-data "index.html;."
+          --add-binary "$env:UCRT_DIR;."
+          app.py
 
       - name: Выложить готовый exe
         uses: actions/upload-artifact@v4
